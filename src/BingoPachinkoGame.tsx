@@ -657,10 +657,6 @@ export default function BingoPachinkoGame() {
           <div className="flex items-center justify-between pb-2">
             <div className="text-sm font-medium opacity-90">Hit pegs to reveal numbers</div>
             <div className="flex items-center gap-2">
-              <div className="text-sm font-semibold opacity-80">
-                Balls: {ballsLeft}/5
-              </div>
-              <div className="text-xs opacity-70">Pegs: {remainingPegs}</div>
             </div>
           </div>
 
@@ -727,6 +723,17 @@ export default function BingoPachinkoGame() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           >
+            {/* Ball remaining indicator */}
+            <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+              {Array.from({ length: 5 }, (_, i) => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full ${
+                    i < ballsLeft ? 'bg-white' : 'bg-white/20'
+                  }`}
+                />
+              ))}
+            </div>
             {!ball.dropping && (
               <div
                 className="absolute h-5 w-5 rounded-full bg-white pointer-events-none"
