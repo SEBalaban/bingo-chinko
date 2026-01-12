@@ -701,7 +701,7 @@ export default function BingoPachinkoGame() {
         </div>
 
         {/* Pachinko Game Area */}
-        <div className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative">
+        <div className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative w-full max-w-[400px] mx-auto">
           {/* Ball Starting Area */}
           <div 
             data-game-area
@@ -737,11 +737,9 @@ export default function BingoPachinkoGame() {
           <div 
             data-game-area
             ref={gameAreaRef}
-            className="flex-1 relative mx-auto"
+            className="flex-1 relative mx-auto w-full max-w-[400px]"
             style={{ 
-              width: '100%',
-              maxWidth: '100%',
-              aspectRatio: '1.2',
+              aspectRatio: '2.0',
               touchAction: 'none',
               userSelect: 'none',
             }}
