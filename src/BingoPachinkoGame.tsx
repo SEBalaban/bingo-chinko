@@ -93,10 +93,10 @@ function generatePegs(count = 30): Peg[] {
   const rows = Math.ceil(count / cols);
   const pegs: Peg[] = [];
 
-  const left = 0.1;
-  const right = 0.9;
-  const top = 0.18;
-  const bottom = 0.85;
+  const left = 0.12;
+  const right = 0.88;
+  const top = 0.15;
+  const bottom = 0.90;
 
   let idx = 0;
   for (let r = 0; r < rows; r++) {
@@ -115,8 +115,8 @@ function generatePegs(count = 30): Peg[] {
 
       pegs.push({
         id: `peg-${idx}`,
-        x: clamp(gx + stagger + jitterX, 0.1, 0.9),
-        y: clamp(gy + jitterY, 0.16, 0.88),
+        x: clamp(gx + stagger + jitterX, 0.12, 0.88),
+        y: clamp(gy + jitterY, 0.15, 0.90),
         removed: false,
         hit: false,
       });
@@ -186,8 +186,8 @@ export default function BingoPachinkoGame() {
   }, [marked]);
 
   const boardRef = useRef<HTMLDivElement | null>(null);
-  const boardRectRef = useRef({ w: 400, h: 400 }); // Start with reasonable defaults
-  const [boardSize, setBoardSize] = useState({ w: 400, h: 400 });
+  const boardRectRef = useRef({ w: 400, h: 250 }); // Start with reasonable defaults
+  const [boardSize, setBoardSize] = useState({ w: 400, h: 250 });
   const [isPositioning, setIsPositioning] = useState(false);
 
   useEffect(() => {
@@ -195,9 +195,8 @@ export default function BingoPachinkoGame() {
     if (!el) return;
     const update = () => {
       const r = el.getBoundingClientRect();
-      // Make it square - use width for both dimensions
-      const size = Math.min(r.width, r.height);
-      const newSize = { w: size, h: size };
+      // Use actual width and fixed 250px height
+      const newSize = { w: r.width, h: 250 };
       boardRectRef.current = newSize;
       setBoardSize(newSize); // Update state for SVG viewBox
     };
@@ -387,10 +386,16 @@ export default function BingoPachinkoGame() {
 
       // Update DOM directly for smooth 60fps animation
       const ballEl = document.querySelector('[data-ball="falling"]') as HTMLElement;
+      const collisionEl = document.querySelector('[data-ball-collision]') as HTMLElement;
       if (ballEl) {
         const { w, h } = boardRectRef.current;
-        ballEl.style.left = `${x * w - 24}px`;
-        ballEl.style.top = `${y * h - 24}px`;
+        ballEl.style.left = `${x * w - 12}px`;
+        ballEl.style.top = `${y * h - 12}px`;
+        if (collisionEl) {
+          const rBall = w * 0.03;
+          collisionEl.style.left = `${x * w - rBall}px`;
+          collisionEl.style.top = `${y * h - rBall}px`;
+        }
       }
 
       animationFrameRef.current = requestAnimationFrame(step);
@@ -651,8 +656,8 @@ export default function BingoPachinkoGame() {
           <div className="flex items-center justify-between pb-2">
             <div className="text-sm font-medium opacity-90">Hit pegs to reveal numbers</div>
             <div className="flex items-center gap-2">
-              <div className={`text-sm font-semibold ${hasBingo ? "text-emerald-300" : "opacity-80"}`}>
-                {hasBingo ? "BINGO!" : `Balls: ${ballsLeft}/5`}
+              <div className="text-sm font-semibold opacity-80">
+                Balls: {ballsLeft}/5
               </div>
               <div className="text-xs opacity-70">Pegs: {remainingPegs}</div>
             </div>
@@ -692,12 +697,6 @@ export default function BingoPachinkoGame() {
               })
             )}
           </div>
-
-          {hasBingo ? (
-            <div className="mt-2 rounded-2xl bg-emerald-400/10 ring-1 ring-emerald-300/30 px-3 py-2 text-sm">
-              🎉 Bingo called! Keep dropping balls to clear pegs.
-            </div>
-          ) : null}
         </div>
 
         {/* Pachinko Game Area */}
@@ -719,17 +718,15 @@ export default function BingoPachinkoGame() {
             </div>
             {!ball.dropping && (
               <div
-                className="absolute h-12 w-12 rounded-full bg-slate-900 shadow-lg flex items-center justify-center pointer-events-none"
+                className="absolute h-6 w-6 rounded-full bg-white pointer-events-none"
                 style={{
                   left: `${(ball.x - 0.06) / 0.88 * 100}%`,
                   transform: 'translateX(-50%)',
                   top: '50%',
-                  marginTop: '-24px',
+                  marginTop: '-12px',
                   transition: isPositioning ? 'none' : 'left 0.1s ease-out',
                 }}
-              >
-                <div className="h-3 w-3 rounded-full bg-slate-700" />
-              </div>
+              />
             )}
           </div>
 
@@ -737,9 +734,9 @@ export default function BingoPachinkoGame() {
           <div 
             data-game-area
             ref={gameAreaRef}
-            className="flex-1 relative mx-auto w-full max-w-[400px]"
+            className="relative mx-auto w-full max-w-[400px] shrink-0"
             style={{ 
-              aspectRatio: '2.0',
+              height: '250px',
               touchAction: 'none',
               userSelect: 'none',
             }}
@@ -757,9 +754,6 @@ export default function BingoPachinkoGame() {
             </div>
 
             <div ref={boardRef} className="absolute inset-0" style={{ touchAction: 'none' }}>
-            {/* Board frame */}
-            <div className="absolute inset-0 m-3 rounded-3xl bg-white/5 ring-1 ring-white/10" />
-
             <svg
               className="absolute inset-0"
               viewBox={`0 0 ${boardSize.w} ${boardSize.h}`}
@@ -811,25 +805,31 @@ export default function BingoPachinkoGame() {
 
             {/* Simulated falling ball (visual) */}
             {ball.dropping ? (
-              <div
-                data-ball="falling"
-                className="absolute h-12 w-12 rounded-full bg-slate-900 shadow-lg flex items-center justify-center pointer-events-none"
-                style={{ 
-                  left: ballPx.x - 24, 
-                  top: ballPx.y - 24,
-                  transition: 'none', // Disable CSS transitions for direct DOM updates
-                }}
-              >
-                <div className="h-3 w-3 rounded-full bg-slate-700" />
-              </div>
+              <>
+                {/* Physics collision radius indicator */}
+                <div
+                  data-ball-collision
+                  className="absolute rounded-full border-2 border-white/30 pointer-events-none"
+                  style={{ 
+                    left: ballPx.x - (boardRectRef.current.w * 0.03), 
+                    top: ballPx.y - (boardRectRef.current.w * 0.03),
+                    width: boardRectRef.current.w * 0.06,
+                    height: boardRectRef.current.w * 0.06,
+                    transition: 'none',
+                  }}
+                />
+                {/* Visual ball */}
+                <div
+                  data-ball="falling"
+                  className="absolute h-6 w-6 rounded-full bg-white pointer-events-none"
+                  style={{ 
+                    left: ballPx.x - 12, 
+                    top: ballPx.y - 12,
+                    transition: 'none', // Disable CSS transitions for direct DOM updates
+                  }}
+                />
+              </>
             ) : null}
-
-            {/* Bottom info */}
-            <div className="absolute bottom-2 left-2 right-2">
-              <div className="text-[10px] opacity-60 text-center">
-                Hit pegs are removed after each drop.
-              </div>
-            </div>
             </div>
           </div>
         </div>
