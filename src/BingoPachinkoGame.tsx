@@ -679,9 +679,11 @@ export default function BingoPachinkoGame() {
                   >
                     <div className="flex flex-col items-center leading-none">
                       <div className="tabular-nums">{free ? "★" : cell}</div>
-                      <div className={`mt-1 text-[10px] font-semibold ${on ? "opacity-80" : "opacity-50"}`}>
-                        {free ? "FREE" : on ? "MARK" : ""}
-                      </div>
+                      {free && (
+                        <div className="mt-1 text-[10px] font-semibold opacity-80">
+                          FREE
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -830,20 +832,6 @@ export default function BingoPachinkoGame() {
             </div>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="rounded-3xl bg-white/5 p-3 flex items-center justify-between">
-          <div className="text-xs opacity-80">
-            Marked: <span className="font-semibold tabular-nums">{[...marked].sort((a, b) => a - b).slice(0, 12).join(", ") || "—"}</span>
-            {marked.size > 12 ? <span className="opacity-60"> …</span> : null}
-          </div>
-          <button
-            onClick={() => setMarked(new Set())}
-            className="rounded-xl bg-white/10 px-3 py-2 text-xs active:scale-[0.98]"
-          >
-            Clear Marks
-          </button>
         </div>
       </div>
 
