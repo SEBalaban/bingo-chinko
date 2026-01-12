@@ -391,6 +391,7 @@ export default function BingoPachinkoGame() {
         const { w, h } = boardRectRef.current;
         ballEl.style.left = `${x * w - 12}px`;
         ballEl.style.top = `${y * h - 12}px`;
+        ballEl.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.6)';
         if (collisionEl) {
           const rBall = w * 0.03;
           collisionEl.style.left = `${x * w - rBall}px`;
@@ -713,9 +714,6 @@ export default function BingoPachinkoGame() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
           >
-            <div className="text-xs opacity-70 text-center px-4">
-              {isPositioning ? "Move finger left/right to position" : "Tap to position ball"}
-            </div>
             {!ball.dropping && (
               <div
                 className="absolute h-6 w-6 rounded-full bg-white pointer-events-none"
@@ -725,6 +723,7 @@ export default function BingoPachinkoGame() {
                   top: '50%',
                   marginTop: '-12px',
                   transition: isPositioning ? 'none' : 'left 0.1s ease-out',
+                  boxShadow: '0 0 8px rgba(255, 255, 255, 0.6)',
                 }}
               />
             )}
@@ -749,7 +748,7 @@ export default function BingoPachinkoGame() {
           >
             <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between">
               <div className="text-xs opacity-80">
-                {ball.dropping ? `Dropping… (hits: ${hitThisBoard})` : ballsLeft > 0 ? "Tap to position & release to drop" : "Out of balls"}
+                {ballsLeft > 0 ? "" : "Out of balls"}
               </div>
             </div>
 
@@ -826,6 +825,7 @@ export default function BingoPachinkoGame() {
                     left: ballPx.x - 12, 
                     top: ballPx.y - 12,
                     transition: 'none', // Disable CSS transitions for direct DOM updates
+                    boxShadow: '0 0 8px rgba(255, 255, 255, 0.6)',
                   }}
                 />
               </>
