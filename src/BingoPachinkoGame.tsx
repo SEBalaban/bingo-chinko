@@ -389,8 +389,8 @@ export default function BingoPachinkoGame() {
       const collisionEl = document.querySelector('[data-ball-collision]') as HTMLElement;
       if (ballEl) {
         const { w, h } = boardRectRef.current;
-        ballEl.style.left = `${x * w - 12}px`;
-        ballEl.style.top = `${y * h - 12}px`;
+        ballEl.style.left = `${x * w - 10}px`;
+        ballEl.style.top = `${y * h - 10}px`;
         ballEl.style.boxShadow = '0 0 8px rgba(255, 255, 255, 0.6)';
         if (collisionEl) {
           const rBall = w * 0.03;
@@ -701,12 +701,25 @@ export default function BingoPachinkoGame() {
         </div>
 
         {/* Pachinko Game Area */}
-        <div className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative w-full max-w-[400px] mx-auto">
+        <div 
+          className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative w-full max-w-[400px] mx-auto"
+          style={{
+            backgroundImage: 'url(/backgrounds/background_city.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        >
+          {/* Background overlay for transparency */}
+          <div 
+            className="absolute inset-0 bg-black/50 pointer-events-none rounded-3xl"
+            style={{ zIndex: 0 }}
+          />
           {/* Ball Starting Area */}
           <div 
             data-game-area
             className="h-16 w-full bg-white/5 border-b border-white/10 flex items-center justify-center relative"
-            style={{ touchAction: 'none', userSelect: 'none' }}
+            style={{ zIndex: 1, touchAction: 'none', userSelect: 'none' }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -716,12 +729,12 @@ export default function BingoPachinkoGame() {
           >
             {!ball.dropping && (
               <div
-                className="absolute h-6 w-6 rounded-full bg-white pointer-events-none"
+                className="absolute h-5 w-5 rounded-full bg-white pointer-events-none"
                 style={{
                   left: `${(ball.x - 0.06) / 0.88 * 100}%`,
                   transform: 'translateX(-50%)',
                   top: '50%',
-                  marginTop: '-12px',
+                  marginTop: '-10px',
                   transition: isPositioning ? 'none' : 'left 0.1s ease-out',
                   boxShadow: '0 0 8px rgba(255, 255, 255, 0.6)',
                 }}
@@ -738,6 +751,7 @@ export default function BingoPachinkoGame() {
               height: '250px',
               touchAction: 'none',
               userSelect: 'none',
+              zIndex: 1,
             }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
@@ -758,6 +772,19 @@ export default function BingoPachinkoGame() {
               viewBox={`0 0 ${boardSize.w} ${boardSize.h}`}
               preserveAspectRatio="xMidYMid meet"
             >
+              <defs>
+                <filter id="pegShadow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+                  <feOffset dx="1" dy="1" result="offsetblur"/>
+                  <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.3"/>
+                  </feComponentTransfer>
+                  <feMerge>
+                    <feMergeNode/>
+                    <feMergeNode in="SourceGraphic"/>
+                  </feMerge>
+                </filter>
+              </defs>
               {/* Pegs */}
               {pegs.map((p) => {
                 if (p.removed) return null;
@@ -770,9 +797,10 @@ export default function BingoPachinkoGame() {
                       cx={pt.x}
                       cy={pt.y}
                       r={r}
-                      fill={hit ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.16)"}
-                      stroke={hit ? "rgba(16,185,129,0.55)" : "rgba(255,255,255,0.22)"}
+                      fill={hit ? "rgb(37,99,235)" : "rgb(59,130,246)"}
+                      stroke="rgb(147,197,253)"
                       strokeWidth={2}
+                      filter="url(#pegShadow)"
                     />
                     {hit && typeof p.num === "number" ? (
                       <text
@@ -781,7 +809,7 @@ export default function BingoPachinkoGame() {
                         textAnchor="middle"
                         fontSize={12}
                         fontWeight={800}
-                        fill="rgba(255,255,255,0.9)"
+                        fill="rgb(255,255,255)"
                       >
                         {p.num}
                       </text>
@@ -820,10 +848,10 @@ export default function BingoPachinkoGame() {
                 {/* Visual ball */}
                 <div
                   data-ball="falling"
-                  className="absolute h-6 w-6 rounded-full bg-white pointer-events-none"
+                  className="absolute h-5 w-5 rounded-full bg-white pointer-events-none"
                   style={{ 
-                    left: ballPx.x - 12, 
-                    top: ballPx.y - 12,
+                    left: ballPx.x - 10, 
+                    top: ballPx.y - 10,
                     transition: 'none', // Disable CSS transitions for direct DOM updates
                     boxShadow: '0 0 8px rgba(255, 255, 255, 0.6)',
                   }}
