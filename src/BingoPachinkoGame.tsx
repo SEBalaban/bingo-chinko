@@ -1,15 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-  DragStartEvent,
-  DragMoveEvent,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { useDraggable } from "@dnd-kit/core";
 
 /**
  * Bingo Pachinko (mobile portrait)
@@ -22,7 +11,7 @@ import { useDraggable } from "@dnd-kit/core";
  * - Auto-calls BINGO; player gets 5 balls
  *
  * Notes:
- * - Uses @dnd-kit for horizontal ball positioning.
+ * - Uses touch events for ball positioning (tap to start, move to position, release to drop).
  * - Physics is lightweight/arcade (no external physics engine).
  */
 
@@ -149,36 +138,6 @@ function pickHitNumber(pool: number[], marked: Set<number>) {
   return Math.floor(Math.random() * 75) + 1;
 }
 
-// ----------------------------- DnD ball -----------------------------
-
-function DraggableBall({ id, disabled }: { id: string; disabled: boolean }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id,
-    disabled,
-  });
-
-  const style: React.CSSProperties = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-      : undefined,
-    touchAction: "none",
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`h-12 w-12 rounded-full bg-slate-900 shadow-lg flex items-center justify-center select-none ${
-        disabled ? "opacity-70" : "opacity-100"
-      } ${isDragging ? "ring-2 ring-white/70" : ""}`}
-      {...listeners}
-      {...attributes}
-      aria-label="Pachinko ball"
-    >
-      <div className="h-3 w-3 rounded-full bg-slate-700" />
-    </div>
-  );
-}
 
 // ----------------------------- Main Game -----------------------------
 
@@ -202,6 +161,11 @@ export default function BingoPachinkoGame() {
   const animationFrameRef = useRef<number>();
   const lastUpdateRef = useRef(performance.now());
   
+  // Touch handling for ball positioning
+  const isPositioningRef = useRef(false);
+  const touchStartXRef = useRef(0);
+  const gameAreaRef = useRef<HTMLDivElement>(null);
+  
   // Initialize refs
   useEffect(() => {
     ballRef.current = ball;
@@ -219,22 +183,19 @@ export default function BingoPachinkoGame() {
     markedRef.current = marked;
   }, [marked]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 3 },
-    })
-  );
-
   const boardRef = useRef<HTMLDivElement | null>(null);
   const boardRectRef = useRef({ w: 400, h: 400 }); // Start with reasonable defaults
   const [boardSize, setBoardSize] = useState({ w: 400, h: 400 });
+  const [isPositioning, setIsPositioning] = useState(false);
 
   useEffect(() => {
     const el = boardRef.current;
     if (!el) return;
     const update = () => {
       const r = el.getBoundingClientRect();
-      const newSize = { w: r.width, h: r.height };
+      // Make it square - use width for both dimensions
+      const size = Math.min(r.width, r.height);
+      const newSize = { w: size, h: size };
       boardRectRef.current = newSize;
       setBoardSize(newSize); // Update state for SVG viewBox
     };
@@ -442,39 +403,150 @@ export default function BingoPachinkoGame() {
   }, [markNumber]);
 
 
-  // Improved drag handlers with dnd-kit
-  const onDragStart = useCallback((event: DragStartEvent) => {
-    if (ball.dropping || ballsLeft <= 0) return;
-  }, [ball.dropping, ballsLeft]);
-
-  const onDragMove = useCallback((event: DragMoveEvent) => {
-    if (ball.dropping || ballsLeft <= 0) return;
-    const delta = event.delta;
-    if (!delta) return;
+  // Unified handlers for both touch and mouse events
+  const handleStart = useCallback((clientX: number, target: HTMLElement) => {
+    const b = ballRef.current;
+    if (b.dropping || ballsLeft <= 0) {
+      return;
+    }
     
-    const rect = boardRectRef.current;
-    const maxXpx = Math.max(1, rect.w * 0.44);
-    const dx = delta.x / maxXpx;
+    const rect = target.getBoundingClientRect();
+    const x = clientX - rect.left;
     
-    setBall((b) => {
-      if (b.dropping) return b;
-      const nx = clamp(b.x + dx, 0.06, 0.94);
-      return { ...b, x: nx };
+    isPositioningRef.current = true;
+    touchStartXRef.current = x;
+    setIsPositioning(true);
+    
+    // Set initial ball position based on touch/mouse (normalized to 0-1, then clamped)
+    const normalizedX = clamp(x / rect.width, 0.06, 0.94);
+    setBall((prev) => {
+      if (prev.dropping) return prev;
+      return { ...prev, x: normalizedX };
     });
-  }, [ball.dropping, ballsLeft]);
+  }, [ballsLeft]);
 
-  const onDragEnd = useCallback((event: DragEndEvent) => {
-    if (ball.dropping || ballsLeft <= 0) return;
+  const handleMove = useCallback((clientX: number, target: HTMLElement) => {
+    if (!isPositioningRef.current) return;
+    
+    const b = ballRef.current;
+    if (b.dropping || ballsLeft <= 0) {
+      return;
+    }
+    
+    const rect = target.getBoundingClientRect();
+    const x = clientX - rect.left;
+    
+    // Update ball position based on horizontal movement
+    const normalizedX = clamp(x / rect.width, 0.06, 0.94);
+    setBall((prev) => {
+      if (prev.dropping) return prev;
+      return { ...prev, x: normalizedX };
+    });
+  }, [ballsLeft]);
+
+  const handleEnd = useCallback(() => {
+    if (!isPositioningRef.current) {
+      setIsPositioning(false);
+      return;
+    }
+    
+    const b = ballRef.current;
+    if (b.dropping || ballsLeft <= 0) {
+      isPositioningRef.current = false;
+      setIsPositioning(false);
+      return;
+    }
+    
+    isPositioningRef.current = false;
+    setIsPositioning(false);
+    
+    // Release the ball
     hitPegIdsRef.current = new Set();
     setBallsLeft((n) => Math.max(0, n - 1));
-    setBall((b) => ({
-      ...b,
+    setBall((prev) => ({
+      ...prev,
       y: 0.06,
       vx: (Math.random() - 0.5) * 0.18,
       vy: 0.02,
       dropping: true,
     }));
-  }, [ball.dropping, ballsLeft]);
+  }, [ballsLeft]);
+
+  // Touch event handlers
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    handleStart(touch.clientX, e.currentTarget as HTMLElement);
+  }, [handleStart]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isPositioningRef.current) {
+      e.preventDefault();
+      return;
+    }
+    
+    const touch = e.touches[0];
+    if (!touch) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    handleMove(touch.clientX, e.currentTarget as HTMLElement);
+  }, [handleMove]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleEnd();
+  }, [handleEnd]);
+
+  // Mouse event handlers (for desktop testing)
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleStart(e.clientX, e.currentTarget as HTMLElement);
+  }, [handleStart]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPositioningRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleMove(e.clientX, e.currentTarget as HTMLElement);
+  }, [handleMove]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleEnd();
+  }, [handleEnd]);
+
+  // Global mouse handlers for drag outside element
+  useEffect(() => {
+    if (!isPositioning) return;
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isPositioningRef.current || !gameAreaRef.current) return;
+      e.preventDefault();
+      handleMove(e.clientX, gameAreaRef.current);
+    };
+
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      e.preventDefault();
+      handleEnd();
+    };
+
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isPositioning, handleMove, handleEnd]);
 
   // UI derived
   const remainingPegs = pegs.filter((p) => !p.removed).length;
@@ -490,36 +562,36 @@ export default function BingoPachinkoGame() {
 
   // Prevent scrolling on mobile while allowing drag interactions
   useEffect(() => {
-    const preventScroll = (e: TouchEvent) => {
-      // Allow multi-touch gestures (pinch zoom) - but we'll prevent it anyway
-      // Only prevent if it's a single touch that would cause scrolling
+    // Prevent pull-to-refresh and overscroll bounce - but allow game area touches
+    const preventOverscroll = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
       
-      // Allow touches on interactive elements (buttons, draggable ball)
-      if (target.closest('button') || target.closest('[role="button"]') || target.closest('[data-draggable]')) {
+      // Always allow touches on buttons
+      if (target.closest('button')) {
         return;
       }
       
-      // Prevent scrolling on the main container
-      if (target.closest('.overflow-hidden') || target === document.body || target === document.documentElement) {
-        e.preventDefault();
+      // Allow touches on game area (starting area or peg board)
+      if (target.closest('[data-game-area]') || gameAreaRef.current?.contains(target)) {
+        return;
       }
-    };
-
-    // Prevent pull-to-refresh and overscroll bounce
-    const preventOverscroll = (e: TouchEvent) => {
+      
+      // Prevent scrolling elsewhere
       if (e.touches.length === 1) {
-        const target = e.target as HTMLElement;
-        // Only prevent if not interacting with game elements
-        if (!target.closest('button') && !target.closest('[data-draggable]')) {
-          e.preventDefault();
-        }
+        e.preventDefault();
       }
     };
 
     // Prevent double-tap zoom
     let lastTouchEnd = 0;
     const preventDoubleTapZoom = (e: TouchEvent) => {
+      const target = e.target as HTMLElement;
+      
+      // Allow on game area
+      if (target.closest('[data-game-area]') || gameAreaRef.current?.contains(target)) {
+        return;
+      }
+      
       const now = Date.now();
       if (now - lastTouchEnd <= 300) {
         e.preventDefault();
@@ -551,7 +623,9 @@ export default function BingoPachinkoGame() {
     <div className="h-[100svh] w-full bg-slate-950 text-white flex flex-col overflow-hidden touch-none" style={{ touchAction: 'none' }}>
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-        <div className="text-lg font-semibold tracking-tight">Bingo Pachinko</div>
+        <div className="text-lg font-semibold tracking-tight">
+          Bingo Pachinko <span className="text-xs opacity-60 font-normal">v0.0.1</span>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={resetBoard}
@@ -569,9 +643,9 @@ export default function BingoPachinkoGame() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col gap-3 px-3 pb-4 overflow-hidden">
-        {/* Bingo Card */}
-        <div className="rounded-3xl bg-white/5 p-2 shadow-xl shrink-0">
+      <div className="flex-1 flex flex-col gap-2 px-3 pb-4 overflow-hidden">
+        {/* Bingo Card - Smaller */}
+        <div className="rounded-2xl bg-white/5 p-1.5 shadow-xl shrink-0">
           <div className="flex items-center justify-between pb-2">
             <div className="text-sm font-medium opacity-90">Hit pegs to reveal numbers</div>
             <div className="flex items-center gap-2">
@@ -582,7 +656,7 @@ export default function BingoPachinkoGame() {
             </div>
           </div>
 
-          <div className="w-full max-w-[360px] mx-auto grid grid-cols-5 gap-1">
+          <div className="w-full max-w-[280px] mx-auto grid grid-cols-5 gap-0.5">
             {COLS.map((c) => (
               <div
                 key={c.label}
@@ -622,29 +696,72 @@ export default function BingoPachinkoGame() {
           ) : null}
         </div>
 
-        {/* Pachinko Board */}
-        <div className="flex-1 min-h-[320px] rounded-3xl bg-white/5 shadow-xl overflow-hidden relative">
-          <div className="absolute inset-0 opacity-60 pointer-events-none">
-            <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-transparent" />
+        {/* Pachinko Game Area */}
+        <div className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative">
+          {/* Ball Starting Area */}
+          <div 
+            data-game-area
+            className="h-16 w-full bg-white/5 border-b border-white/10 flex items-center justify-center relative"
+            style={{ touchAction: 'none', userSelect: 'none' }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          >
+            <div className="text-xs opacity-70 text-center px-4">
+              {isPositioning ? "Move finger left/right to position" : "Tap to position ball"}
+            </div>
+            {!ball.dropping && (
+              <div
+                className="absolute h-12 w-12 rounded-full bg-slate-900 shadow-lg flex items-center justify-center pointer-events-none"
+                style={{
+                  left: `${(ball.x - 0.06) / 0.88 * 100}%`,
+                  transform: 'translateX(-50%)',
+                  top: '50%',
+                  marginTop: '-24px',
+                  transition: isPositioning ? 'none' : 'left 0.1s ease-out',
+                }}
+              >
+                <div className="h-3 w-3 rounded-full bg-slate-700" />
+              </div>
+            )}
           </div>
 
-          <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between">
-            <div className="text-xs opacity-80">
-              Drag ball left/right • release to drop
+          {/* Peg Board - Fixed Square */}
+          <div 
+            data-game-area
+            ref={gameAreaRef}
+            className="flex-1 relative mx-auto"
+            style={{ 
+              width: '100%',
+              maxWidth: '100%',
+              aspectRatio: '1',
+              touchAction: 'none',
+              userSelect: 'none',
+            }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+          >
+            <div className="absolute top-2 left-2 right-2 z-10 flex items-center justify-between">
+              <div className="text-xs opacity-80">
+                {ball.dropping ? `Dropping… (hits: ${hitThisBoard})` : ballsLeft > 0 ? "Tap to position & release to drop" : "Out of balls"}
+              </div>
             </div>
-            <div className="text-xs opacity-80">
-              {ball.dropping ? `Dropping… (hits: ${hitThisBoard})` : ballsLeft > 0 ? "Ready" : "Out of balls"}
-            </div>
-          </div>
 
-          <div ref={boardRef} className="absolute inset-0">
+            <div ref={boardRef} className="absolute inset-0" style={{ touchAction: 'none' }}>
             {/* Board frame */}
             <div className="absolute inset-0 m-3 rounded-3xl bg-white/5 ring-1 ring-white/10" />
 
             <svg
               className="absolute inset-0"
               viewBox={`0 0 ${boardSize.w} ${boardSize.h}`}
-              preserveAspectRatio="none"
+              preserveAspectRatio="xMidYMid meet"
             >
               {/* Pegs */}
               {pegs.map((p) => {
@@ -690,33 +807,6 @@ export default function BingoPachinkoGame() {
               />
             </svg>
 
-            {/* DnD for ball positioning */}
-            <DndContext 
-              sensors={sensors} 
-              onDragStart={onDragStart}
-              onDragMove={onDragMove} 
-              onDragEnd={onDragEnd}
-            >
-              {!ball.dropping && (
-                <div
-                  className="absolute"
-                  style={{
-                    left: ballPx.x - 24,
-                    top: boardSize.h * 0.06 - 24,
-                  }}
-                >
-                  <DraggableBall id="pball" disabled={ball.dropping || ballsLeft <= 0} />
-                </div>
-              )}
-              <DragOverlay>
-                {ball.dropping ? null : (
-                  <div className="h-12 w-12 rounded-full bg-slate-900 shadow-lg flex items-center justify-center">
-                    <div className="h-3 w-3 rounded-full bg-slate-700" />
-                  </div>
-                )}
-              </DragOverlay>
-            </DndContext>
-
             {/* Simulated falling ball (visual) */}
             {ball.dropping ? (
               <div
@@ -732,22 +822,12 @@ export default function BingoPachinkoGame() {
               </div>
             ) : null}
 
-            {/* Bottom controls */}
-            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-              <div className="text-[11px] opacity-70">
+            {/* Bottom info */}
+            <div className="absolute bottom-2 left-2 right-2">
+              <div className="text-[10px] opacity-60 text-center">
                 Hit pegs are removed after each drop.
               </div>
-              <button
-                onClick={() => {
-                  if (ball.dropping || ballsLeft <= 0) return;
-                  hitPegIdsRef.current = new Set();
-                  setBallsLeft((n) => Math.max(0, n - 1));
-                  setBall((b) => ({ ...b, y: 0.06, vx: (Math.random() - 0.5) * 0.16, vy: 0.02, dropping: true }));
-                }}
-                className="rounded-xl bg-white/10 px-3 py-2 text-xs active:scale-[0.98]"
-              >
-                Drop
-              </button>
+            </div>
             </div>
           </div>
         </div>
