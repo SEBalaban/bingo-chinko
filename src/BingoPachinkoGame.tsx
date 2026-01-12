@@ -85,17 +85,18 @@ type PBall = {
   dropping: boolean;
 };
 
-function generatePegs(count = 44): Peg[] {
+function generatePegs(count = 30): Peg[] {
   // Generate a jittered grid inside the square.
   // Avoid top spawn band and bottom drain area.
-  const cols = 8;
+  // Use fewer columns for better spacing to prevent balls from getting stuck
+  const cols = 6;
   const rows = Math.ceil(count / cols);
   const pegs: Peg[] = [];
 
-  const left = 0.08;
-  const right = 0.92;
-  const top = 0.16;
-  const bottom = 0.88;
+  const left = 0.1;
+  const right = 0.9;
+  const top = 0.18;
+  const bottom = 0.85;
 
   let idx = 0;
   for (let r = 0; r < rows; r++) {
@@ -105,16 +106,17 @@ function generatePegs(count = 44): Peg[] {
       const gx = left + (c / (cols - 1)) * (right - left);
       const gy = top + (r / (rows - 1)) * (bottom - top);
 
-      // Stagger every other row
-      const stagger = (r % 2) * (right - left) * 0.06;
+      // Stagger every other row more to create better flow paths
+      const stagger = (r % 2) * (right - left) * 0.08;
 
-      const jitterX = (Math.random() - 0.5) * 0.05;
-      const jitterY = (Math.random() - 0.5) * 0.04;
+      // Reduced jitter to prevent tight clusters that trap balls
+      const jitterX = (Math.random() - 0.5) * 0.03;
+      const jitterY = (Math.random() - 0.5) * 0.03;
 
       pegs.push({
         id: `peg-${idx}`,
-        x: clamp(gx + stagger + jitterX, 0.06, 0.94),
-        y: clamp(gy + jitterY, 0.14, 0.90),
+        x: clamp(gx + stagger + jitterX, 0.1, 0.9),
+        y: clamp(gy + jitterY, 0.16, 0.88),
         removed: false,
         hit: false,
       });
@@ -146,7 +148,7 @@ export default function BingoPachinkoGame() {
   const [marked, setMarked] = useState<Set<number>>(() => new Set());
   const pool = useMemo(() => cardNumberPool(card), [card]);
 
-  const initialPegs = useMemo(() => generatePegs(44), []);
+  const initialPegs = useMemo(() => generatePegs(30), []);
   const [pegs, setPegs] = useState<Peg[]>(initialPegs);
   const [ballsLeft, setBallsLeft] = useState(5);
 
@@ -231,7 +233,7 @@ export default function BingoPachinkoGame() {
   };
 
   const resetBoard = () => {
-    const newPegs = generatePegs(44);
+    const newPegs = generatePegs(30);
     setPegs(newPegs);
     const newBall = { x: 0.5, y: 0.06, vx: 0, vy: 0, dropping: false };
     setBall(newBall);
@@ -656,7 +658,7 @@ export default function BingoPachinkoGame() {
             </div>
           </div>
 
-          <div className="w-full max-w-[280px] mx-auto grid grid-cols-5 gap-0.5">
+          <div className="w-full max-w-[238px] mx-auto grid grid-cols-5 gap-0.5">
             {COLS.map((c) => (
               <div
                 key={c.label}
@@ -739,7 +741,7 @@ export default function BingoPachinkoGame() {
             style={{ 
               width: '100%',
               maxWidth: '100%',
-              aspectRatio: '1',
+              aspectRatio: '1.2',
               touchAction: 'none',
               userSelect: 'none',
             }}
