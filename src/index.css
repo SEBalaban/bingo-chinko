@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Helpful mobile defaults */
+html, body, #root { 
+  height: 100%; 
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+  touch-action: none;
+  -webkit-overflow-scrolling: none;
+}
+
+body { 
+  margin: 0; 
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#root {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: none;
+}
