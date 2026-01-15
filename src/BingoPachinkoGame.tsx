@@ -143,9 +143,21 @@ function pickHitNumber(pool: number[], marked: Set<number>) {
 
 // ----------------------------- Main Game -----------------------------
 
+const BACKGROUNDS = [
+  'background_beach.jpeg',
+  'background_city.png',
+  'background_forest.jpeg',
+  'background_vegas.png',
+];
+
+function getRandomBackground() {
+  return BACKGROUNDS[Math.floor(Math.random() * BACKGROUNDS.length)];
+}
+
 export default function BingoPachinkoGame() {
   const [card, setCard] = useState<(number | "FREE")[][]>(() => generateBingoCard());
   const [marked, setMarked] = useState<Set<number>>(() => new Set());
+  const [background, setBackground] = useState<string>(() => getRandomBackground());
   const pool = useMemo(() => cardNumberPool(card), [card]);
 
   const initialPegs = useMemo(() => generatePegs(30), []);
@@ -262,6 +274,7 @@ export default function BingoPachinkoGame() {
     setCard(generateBingoCard());
     setMarked(new Set());
     setBallsLeft(5);
+    setBackground(getRandomBackground());
     resetBoard();
   };
 
@@ -818,7 +831,7 @@ export default function BingoPachinkoGame() {
         <div 
           className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative w-full max-w-[400px] mx-auto"
           style={{
-            backgroundImage: 'url(/backgrounds/background_city.png)',
+            backgroundImage: `url(/backgrounds/${background})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             backgroundRepeat: 'no-repeat',
