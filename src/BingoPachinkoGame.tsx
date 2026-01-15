@@ -155,6 +155,24 @@ export default function BingoPachinkoGame() {
   const [ball, setBall] = useState<PBall>({ x: 0.5, y: 0.06, vx: 0, vy: 0, dropping: false });
   const hitPegIdsRef = useRef<Set<string>>(new Set());
   
+  // Cup state - moves back and forth at the bottom
+  const [cupX, setCupX] = useState(0.5); // normalized position [0-1]
+  const cupXRef = useRef(0.5);
+  const cupDirectionRef = useRef(1); // 1 for right, -1 for left
+  const cupSpeed = 0.12; // speed of cup movement
+  
+  // Particle effect state
+  type Particle = {
+    id: string;
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    life: number;
+    maxLife: number;
+  };
+  const [particles, setParticles] = useState<Particle[]>([]);
+  
   // Use refs for physics to avoid re-renders
   const ballRef = useRef<PBall>({ x: 0.5, y: 0.06, vx: 0, vy: 0, dropping: false });
   const pegsRef = useRef<Peg[]>(initialPegs);
@@ -247,6 +265,70 @@ export default function BingoPachinkoGame() {
     resetBoard();
   };
 
+
+  // Particle animation
+  useEffect(() => {
+    if (particles.length === 0) return;
+    
+    let animationId: number;
+    const particleStep = () => {
+      setParticles((prev) => {
+        if (prev.length === 0) {
+          cancelAnimationFrame(animationId);
+          return prev;
+        }
+        const dt = 0.016; // ~60fps
+        const updated = prev
+          .map((p) => ({
+            ...p,
+            x: p.x + p.vx * dt,
+            y: p.y + p.vy * dt,
+            life: p.life + dt,
+          }))
+          .filter((p) => p.life < p.maxLife);
+        
+        if (updated.length > 0) {
+          animationId = requestAnimationFrame(particleStep);
+        }
+        return updated;
+      });
+    };
+    
+    animationId = requestAnimationFrame(particleStep);
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [particles.length]);
+
+  // Cup movement animation
+  useEffect(() => {
+    let lastCupTime = performance.now();
+    const cupStep = (now: number) => {
+      const dt = Math.min(0.016, (now - lastCupTime) / 1000); // Cap at ~60fps
+      lastCupTime = now;
+      
+      // Use fixed timestep for consistent speed
+      const fixedDt = 0.016; // ~60fps
+      let newCupX = cupXRef.current + cupDirectionRef.current * cupSpeed * fixedDt;
+      
+      // Bounce off edges
+      if (newCupX < 0.15) {
+        newCupX = 0.15;
+        cupDirectionRef.current = 1;
+      } else if (newCupX > 0.85) {
+        newCupX = 0.85;
+        cupDirectionRef.current = -1;
+      }
+      
+      cupXRef.current = newCupX;
+      setCupX(newCupX);
+      
+      requestAnimationFrame(cupStep);
+    };
+    const cupAnimationId = requestAnimationFrame(cupStep);
+    
+    return () => cancelAnimationFrame(cupAnimationId);
+  }, []);
 
   // Optimized physics loop with integrated collision detection
   useEffect(() => {
@@ -365,6 +447,40 @@ export default function BingoPachinkoGame() {
           x = clamp(x + nx * (minDist - dist) * 0.8, 0.03, 0.97);
           y = clamp(y + ny * (minDist - dist) * 0.8, 0.03, 1.1);
         }
+      }
+
+      // Cup collision detection (before drain)
+      const cupWidth = 0.12; // normalized cup width
+      const cupY = 0.98; // cup position at bottom
+      const cupLeft = cupXRef.current - cupWidth / 2;
+      const cupRight = cupXRef.current + cupWidth / 2;
+      
+      // Check if ball is in cup area (near bottom and within cup x range)
+      if (y > cupY - 0.02 && y < 1.06 && x >= cupLeft && x <= cupRight) {
+        // Ball caught in cup! Award extra ball
+        setBallsLeft((prev) => Math.min(prev + 1, 10)); // Cap at 10 balls
+        
+        // Create particle effect
+        const newParticles: Particle[] = [];
+        for (let i = 0; i < 12; i++) {
+          const angle = (Math.PI * 2 * i) / 12;
+          const speed = 0.15 + Math.random() * 0.1;
+          newParticles.push({
+            id: `particle-${Date.now()}-${i}`,
+            x: cupXRef.current,
+            y: cupY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 0,
+            maxLife: 0.5, // 0.5 seconds
+          });
+        }
+        setParticles((prev) => [...prev, ...newParticles]);
+        
+        ballRef.current = { ...b, x, y: 1.06, vx: 0, vy: 0, dropping: false };
+        setBall(ballRef.current);
+        animationFrameRef.current = requestAnimationFrame(step);
+        return;
       }
 
       // Drain condition
@@ -822,6 +938,46 @@ export default function BingoPachinkoGame() {
                       </text>
                     ) : null}
                   </g>
+                );
+              })}
+
+              {/* Cup target */}
+              <g>
+                <rect
+                  x={cupX * boardSize.w - (boardSize.w * 0.06)}
+                  y={boardSize.h * 0.96}
+                  width={boardSize.w * 0.12}
+                  height={boardSize.h * 0.04}
+                  rx={4}
+                  fill="rgba(255,215,0,0.8)"
+                  stroke="rgba(255,255,255,0.9)"
+                  strokeWidth={2}
+                />
+                <text
+                  x={cupX * boardSize.w}
+                  y={boardSize.h * 0.98}
+                  textAnchor="middle"
+                  fontSize={10}
+                  fontWeight={800}
+                  fill="rgb(0,0,0)"
+                >
+                  EXTRA
+                </text>
+              </g>
+
+              {/* Particle effects */}
+              {particles.map((p) => {
+                const pt = toPx(p.x, p.y);
+                const opacity = 1 - (p.life / p.maxLife);
+                return (
+                  <circle
+                    key={p.id}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={3}
+                    fill="rgba(255,215,0,0.9)"
+                    opacity={opacity}
+                  />
                 );
               })}
 
