@@ -159,7 +159,7 @@ export default function BingoPachinkoGame() {
   const [cupX, setCupX] = useState(0.5); // normalized position [0-1]
   const cupXRef = useRef(0.5);
   const cupDirectionRef = useRef(1); // 1 for right, -1 for left
-  const cupSpeed = 0.12; // speed of cup movement
+  const cupSpeed = 0.10; // speed of cup movement
   
   // Particle effect state
   type Particle = {
@@ -341,20 +341,17 @@ export default function BingoPachinkoGame() {
 
       const b = ballRef.current;
       if (!b.dropping) {
-        // End-of-drop cleanup
+        // End-of-drop cleanup (remove hit pegs, numbers already marked)
         if (b.y >= 1.05 && hitPegIdsRef.current.size > 0) {
           const hitIds = hitPegIdsRef.current;
-          const hitNums: number[] = [];
           const currentPegs = pegsRef.current;
 
           const next = currentPegs.map((p) => {
             if (p.removed) return p;
             if (!hitIds.has(p.id)) return p;
-            if (typeof p.num === "number") hitNums.push(p.num);
             return { ...p, removed: true };
           });
 
-          hitNums.forEach((n) => markNumber(n));
           setPegs(next);
           hitPegIdsRef.current = new Set();
         }
@@ -417,8 +414,13 @@ export default function BingoPachinkoGame() {
         }
       }
 
-      // Update pegs if collisions detected
+      // Update pegs if collisions detected and mark numbers immediately
       if (pegUpdates.length > 0) {
+        // Mark numbers on bingo card immediately when pegs are hit
+        pegUpdates.forEach((update) => {
+          markNumber(update.num);
+        });
+        
         setPegs((prev) => {
           const updateMap = new Map(pegUpdates.map((u) => [u.id, u.num]));
           return prev.map((p) => {
