@@ -18,11 +18,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 // ----------------------------- Bingo helpers -----------------------------
 
 const COLS = [
-  { label: "B", min: 1, max: 15 },
-  { label: "I", min: 16, max: 30 },
-  { label: "N", min: 31, max: 45 },
-  { label: "G", min: 46, max: 60 },
-  { label: "O", min: 61, max: 75 },
+  { label: "B", min: 1, max: 15, color: "bg-blue-500/20", borderColor: "ring-blue-400/40" },
+  { label: "I", min: 16, max: 30, color: "bg-purple-500/20", borderColor: "ring-purple-400/40" },
+  { label: "N", min: 31, max: 45, color: "bg-pink-500/20", borderColor: "ring-pink-400/40" },
+  { label: "G", min: 46, max: 60, color: "bg-green-500/20", borderColor: "ring-green-400/40" },
+  { label: "O", min: 61, max: 75, color: "bg-orange-500/20", borderColor: "ring-orange-400/40" },
 ];
 
 function sampleUniqueInts(min: number, max: number, count: number, used: Set<number>) {
@@ -154,10 +154,32 @@ function getRandomBackground() {
   return BACKGROUNDS[Math.floor(Math.random() * BACKGROUNDS.length)];
 }
 
+type Player = {
+  id: string;
+  name: string;
+  score: number;
+  isAI: boolean;
+};
+
+const AI_NAMES = ['Alex', 'Sam', 'Jordan', 'Taylor'];
+
 export default function BingoPachinkoGame() {
   const [card, setCard] = useState<(number | "FREE")[][]>(() => generateBingoCard());
   const [marked, setMarked] = useState<Set<number>>(() => new Set());
   const [background, setBackground] = useState<string>(() => getRandomBackground());
+  const [players, setPlayers] = useState<Player[]>(() => [
+    { id: 'player', name: 'Player', score: 0, isAI: false },
+    ...AI_NAMES.map((name, i) => ({ id: `ai-${i}`, name, score: 0, isAI: true })),
+  ]);
+  // AI cards for each AI player
+  const [aiCards, setAiCards] = useState<(number | "FREE")[][][]>(() => 
+    AI_NAMES.map(() => generateBingoCard())
+  );
+  const [aiMarked, setAiMarked] = useState<Set<number>[]>(() => 
+    AI_NAMES.map(() => new Set())
+  );
+  // Track which players have already gotten bingo this game
+  const [bingoAwarded, setBingoAwarded] = useState<Set<string>>(new Set());
   const pool = useMemo(() => cardNumberPool(card), [card]);
 
   const initialPegs = useMemo(() => generatePegs(30), []);
@@ -242,23 +264,95 @@ export default function BingoPachinkoGame() {
 
   const isMarked = (v: number | "FREE") => v === "FREE" || (typeof v === "number" && marked.has(v));
 
-  const hasBingo = useMemo(() => {
+  // Check for bingo
+  const checkBingo = useCallback((card: (number | "FREE")[][], marked: Set<number>) => {
+    const isMarked = (v: number | "FREE") => v === "FREE" || (typeof v === "number" && marked.has(v));
     const lines: (Array<number | "FREE">)[] = [];
     for (let r = 0; r < 5; r++) lines.push(card[r]);
     for (let c = 0; c < 5; c++) lines.push([card[0][c], card[1][c], card[2][c], card[3][c], card[4][c]]);
     lines.push([card[0][0], card[1][1], card[2][2], card[3][3], card[4][4]]);
     lines.push([card[0][4], card[1][3], card[2][2], card[3][1], card[4][0]]);
     return lines.some((line) => line.every(isMarked));
-  }, [card, marked]);
+  }, []);
+
+  const hasBingo = useMemo(() => {
+    return checkBingo(card, marked);
+  }, [card, marked, checkBingo]);
+
+  // Check for bingos and award points
+  useEffect(() => {
+    // Check player bingo
+    if (hasBingo && !bingoAwarded.has('player')) {
+      setBingoAwarded((prev) => new Set(prev).add('player'));
+      setPlayers((prev) => 
+        prev.map((p) => 
+          p.id === 'player' ? { ...p, score: p.score + 100 } : p
+        )
+      );
+    }
+  }, [hasBingo, bingoAwarded]);
+
+  // Check AI bingos separately to ensure it runs when AI marks change
+  useEffect(() => {
+    aiCards.forEach((aiCard, aiIndex) => {
+      const aiId = `ai-${aiIndex}`;
+      if (checkBingo(aiCard, aiMarked[aiIndex]) && !bingoAwarded.has(aiId)) {
+        setBingoAwarded((prev) => new Set(prev).add(aiId));
+        setPlayers((prev) => 
+          prev.map((p, idx) => 
+            idx === aiIndex + 1 ? { ...p, score: p.score + 100 } : p
+          )
+        );
+      }
+    });
+  }, [aiCards, aiMarked, bingoAwarded, checkBingo]);
 
   const markNumber = (n: number) => {
     if (!pool.includes(n)) return;
+    let wasNew = false;
     setMarked((prev) => {
       if (prev.has(n)) return prev;
+      wasNew = true;
       const next = new Set(prev);
       next.add(n);
       return next;
     });
+    
+    // Award 10 points for matching a number
+    if (wasNew) {
+      setPlayers((prev) => 
+        prev.map((p) => 
+          p.id === 'player' ? { ...p, score: p.score + 10 } : p
+        )
+      );
+    }
+  };
+
+  // Mark number for AI players
+  const markNumberForAI = (n: number, aiIndex: number) => {
+    const aiCard = aiCards[aiIndex];
+    const aiPool = cardNumberPool(aiCard);
+    if (!aiPool.includes(n)) return;
+    
+    let wasNew = false;
+    setAiMarked((prev) => {
+      const current = prev[aiIndex];
+      if (current.has(n)) return prev;
+      wasNew = true;
+      const updated = [...prev];
+      updated[aiIndex] = new Set(current);
+      updated[aiIndex].add(n);
+      return updated;
+    });
+    
+    // Award 10 points for AI matching a number
+    if (wasNew) {
+      setPlayers((prev) => 
+        prev.map((p, idx) => 
+          idx === aiIndex + 1 ? { ...p, score: p.score + 10 } : p
+        )
+      );
+    }
   };
 
   const resetBoard = () => {
@@ -275,6 +369,16 @@ export default function BingoPachinkoGame() {
     setMarked(new Set());
     setBallsLeft(5);
     setBackground(getRandomBackground());
+    // Reset AI cards and marks
+    setAiCards(AI_NAMES.map(() => generateBingoCard()));
+    setAiMarked(AI_NAMES.map(() => new Set()));
+    // Reset bingo tracking
+    setBingoAwarded(new Set());
+    // Reset scores
+    setPlayers([
+      { id: 'player', name: 'Player', score: 0, isAI: false },
+      ...AI_NAMES.map((name, i) => ({ id: `ai-${i}`, name, score: 0, isAI: true })),
+    ]);
     resetBoard();
   };
 
@@ -317,12 +421,11 @@ export default function BingoPachinkoGame() {
   useEffect(() => {
     let lastCupTime = performance.now();
     const cupStep = (now: number) => {
-      const dt = Math.min(0.016, (now - lastCupTime) / 1000); // Cap at ~60fps
+      const dt = Math.min(0.02, (now - lastCupTime) / 1000); // Cap at 50ms max
       lastCupTime = now;
       
-      // Use fixed timestep for consistent speed
-      const fixedDt = 0.016; // ~60fps
-      let newCupX = cupXRef.current + cupDirectionRef.current * cupSpeed * fixedDt;
+      // Use actual delta time, but cap it to prevent speedup
+      let newCupX = cupXRef.current + cupDirectionRef.current * cupSpeed * dt;
       
       // Bounce off edges
       if (newCupX < 0.15) {
@@ -341,7 +444,7 @@ export default function BingoPachinkoGame() {
     const cupAnimationId = requestAnimationFrame(cupStep);
     
     return () => cancelAnimationFrame(cupAnimationId);
-  }, []);
+  }, [cupSpeed]);
 
   // Optimized physics loop with integrated collision detection
   useEffect(() => {
@@ -432,6 +535,12 @@ export default function BingoPachinkoGame() {
         // Mark numbers on bingo card immediately when pegs are hit
         pegUpdates.forEach((update) => {
           markNumber(update.num);
+          // Mark for AI players (with some probability to make it interesting)
+          AI_NAMES.forEach((_, aiIndex) => {
+            if (Math.random() < 0.7) { // 70% chance AI gets the number
+              markNumberForAI(update.num, aiIndex);
+            }
+          });
         });
         
         setPegs((prev) => {
@@ -767,12 +876,6 @@ export default function BingoPachinkoGame() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={resetBoard}
-            className="rounded-xl bg-white/10 px-3 py-2 text-sm active:scale-[0.98]"
-          >
-            Reset Board
-          </button>
-          <button
             onClick={newGame}
             className="rounded-xl bg-white/10 px-3 py-2 text-sm active:scale-[0.98]"
           >
@@ -782,20 +885,45 @@ export default function BingoPachinkoGame() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 flex flex-col gap-2 px-3 pb-4 overflow-hidden">
-        {/* Bingo Card - Smaller */}
-        <div className="rounded-2xl bg-white/5 p-1.5 shadow-xl shrink-0">
-          <div className="flex items-center justify-between pb-2">
-            <div className="text-sm font-medium opacity-90">Hit pegs to reveal numbers</div>
-            <div className="flex items-center gap-2">
+      <div className="flex-1 flex flex-col gap-2 px-3 pb-4 overflow-hidden min-h-0 items-center">
+        {/* Container for pills, bingo card, and peg board - uses peg board width as reference */}
+        <div className="flex flex-col gap-2 shrink-0" style={{ width: 'min(400px, 100%)' }}>
+          {/* Players and Bingo Card Row - above peg board */}
+          <div className="flex items-end gap-3 shrink-0 w-full">
+            {/* Player Pills - aligned to left */}
+            <div className="flex flex-col gap-2 shrink min-w-0">
+              {players.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-full bg-white/10 border border-white/20"
+                  style={{ transform: 'scale(min(1, (100vw - 48px) / 400))', transformOrigin: 'left center' }}
+                >
+                  {/* Player Icon */}
+                  <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {player.isAI ? '🤖' : '👤'}
+                  </div>
+                  {/* Player Name and Score */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[10px] font-medium truncate">{player.name}</span>
+                    <span className="text-[10px] font-semibold opacity-80 shrink-0">{player.score}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="w-full max-w-[238px] mx-auto grid grid-cols-5 gap-0.5">
+            {/* Bingo Card - aligned to right */}
+            <div className="rounded-2xl bg-white/5 p-1.5 shadow-xl shrink-0 ml-auto">
+            <div className="flex items-center justify-between pb-2">
+              <div className="text-sm font-medium opacity-90">Hit pegs to reveal numbers</div>
+              <div className="flex items-center gap-2">
+              </div>
+            </div>
+
+            <div className="w-full max-w-[238px] grid grid-cols-5 gap-0.5" style={{ transform: 'scale(min(1, (100vw - 48px) / 400))', transformOrigin: 'right center' }}>
             {COLS.map((c) => (
               <div
                 key={c.label}
-                className="text-center text-xs font-semibold opacity-80 rounded-xl bg-white/5 py-1"
+                className={`text-center text-xs font-semibold opacity-80 rounded-xl py-1 ${c.color}`}
               >
                 {c.label}
               </div>
@@ -805,38 +933,45 @@ export default function BingoPachinkoGame() {
               row.map((cell, c) => {
                 const free = cell === "FREE";
                 const on = free || (typeof cell === "number" && marked.has(cell));
+                const colConfig = COLS[c];
                 return (
                   <div
                     key={`${r}-${c}`}
-                    className={`aspect-square rounded-2xl flex items-center justify-center text-sm font-bold shadow-inner ${
-                      on ? "bg-emerald-400/20 ring-1 ring-emerald-300/40" : "bg-white/5"
+                    className={`aspect-square rounded-2xl flex items-center justify-center text-sm font-bold shadow-inner relative ${
+                      on ? "bg-emerald-400/20 ring-1 ring-emerald-300/40" : `${colConfig.color} ring-1 ${colConfig.borderColor}`
                     }`}
                   >
-                    <div className="flex flex-col items-center leading-none">
-                      <div className="tabular-nums">{free ? "★" : cell}</div>
-                      {free && (
-                        <div className="mt-1 text-[10px] font-semibold opacity-80">
-                          FREE
-                        </div>
-                      )}
-                    </div>
+                    {!free && typeof cell === "number" && marked.has(cell) ? (
+                      /* Large solid red dot for matched numbers */
+                      <div className="w-8 h-8 rounded-full bg-red-500 border-2 border-red-300" />
+                    ) : (
+                      <div className="flex flex-col items-center leading-none">
+                        <div className="tabular-nums">{free ? "★" : cell}</div>
+                        {free && (
+                          <div className="mt-1 text-[10px] font-semibold opacity-80">
+                            FREE
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
+          </div>
         </div>
 
-        {/* Pachinko Game Area */}
-        <div 
-          className="flex-1 flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative w-full max-w-[400px] mx-auto"
-          style={{
-            backgroundImage: `url(/backgrounds/${background})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            backgroundRepeat: 'no-repeat',
-          }}
-        >
+          {/* Pachinko Game Area - reference width for alignment */}
+          <div 
+            className="flex flex-col gap-2 rounded-3xl bg-white/5 shadow-xl overflow-hidden relative shrink-0 w-full"
+            style={{
+              backgroundImage: `url(/backgrounds/${background})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          >
           {/* Background overlay for transparency */}
           <div 
             className="absolute inset-0 bg-black/50 pointer-events-none rounded-3xl"
@@ -884,8 +1019,9 @@ export default function BingoPachinkoGame() {
           <div 
             data-game-area
             ref={gameAreaRef}
-            className="relative mx-auto w-full max-w-[400px] shrink-0"
+            className="relative mx-auto shrink-0"
             style={{ 
+              width: '100%',
               height: '250px',
               touchAction: 'none',
               userSelect: 'none',
@@ -1037,6 +1173,7 @@ export default function BingoPachinkoGame() {
               </>
             ) : null}
             </div>
+          </div>
           </div>
         </div>
       </div>
