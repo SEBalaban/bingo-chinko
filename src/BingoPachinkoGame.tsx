@@ -178,6 +178,7 @@ export default function BingoPachinkoGame() {
   const [aiMarked, setAiMarked] = useState<Set<number>[]>(() => 
     AI_NAMES.map(() => new Set())
   );
+  const aiMarkedRef = useRef<Set<number>[]>(AI_NAMES.map(() => new Set()));
   // Track which players have already gotten bingo this game
   const [bingoAwarded, setBingoAwarded] = useState<Set<string>>(new Set());
   const pool = useMemo(() => cardNumberPool(card), [card]);
@@ -212,6 +213,8 @@ export default function BingoPachinkoGame() {
   const pegsRef = useRef<Peg[]>(initialPegs);
   const poolRef = useRef<number[]>(pool);
   const markedRef = useRef<Set<number>>(marked);
+  const playersRef = useRef<Player[]>(players);
+  const aiCardsRef = useRef<(number | "FREE")[][][]>(aiCards);
   const animationFrameRef = useRef<number>();
   const lastUpdateRef = useRef(performance.now());
   
@@ -236,6 +239,18 @@ export default function BingoPachinkoGame() {
   useEffect(() => {
     markedRef.current = marked;
   }, [marked]);
+
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
+  useEffect(() => {
+    aiCardsRef.current = aiCards;
+  }, [aiCards]);
+
+  useEffect(() => {
+    aiMarkedRef.current = aiMarked;
+  }, [aiMarked]);
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const boardRectRef = useRef({ w: 400, h: 250 }); // Start with reasonable defaults
@@ -307,38 +322,46 @@ export default function BingoPachinkoGame() {
     });
   }, [aiCards, aiMarked, bingoAwarded, checkBingo]);
 
-  const markNumber = (n: number) => {
-    if (!pool.includes(n)) return;
-    let wasNew = false;
+  const markNumber = useCallback((n: number) => {
+    const currentPool = poolRef.current;
+    if (!currentPool.includes(n)) return;
+    
+    // Check if already marked before updating
+    const alreadyMarked = markedRef.current.has(n);
+    if (alreadyMarked) return;
+    
     setMarked((prev) => {
       if (prev.has(n)) return prev;
-      wasNew = true;
       const next = new Set(prev);
       next.add(n);
       return next;
     });
     
     // Award 10 points for matching a number
-    if (wasNew) {
-      setPlayers((prev) => 
-        prev.map((p) => 
-          p.id === 'player' ? { ...p, score: p.score + 10 } : p
-        )
+    setPlayers((prev) => {
+      const updated = prev.map((p) => 
+        p.id === 'player' ? { ...p, score: p.score + 10 } : p
       );
-    }
-  };
+      // Update ref immediately
+      playersRef.current = updated;
+      return updated;
+    });
+  }, []);
 
   // Mark number for AI players
-  const markNumberForAI = (n: number, aiIndex: number) => {
-    const aiCard = aiCards[aiIndex];
+  const markNumberForAI = useCallback((n: number, aiIndex: number) => {
+    const currentAiCards = aiCardsRef.current;
+    const aiCard = currentAiCards[aiIndex];
     const aiPool = cardNumberPool(aiCard);
     if (!aiPool.includes(n)) return;
     
-    let wasNew = false;
+    // Check if already marked before updating
+    const currentAiMarked = aiMarkedRef.current[aiIndex];
+    if (currentAiMarked.has(n)) return;
+    
     setAiMarked((prev) => {
       const current = prev[aiIndex];
       if (current.has(n)) return prev;
-      wasNew = true;
       const updated = [...prev];
       updated[aiIndex] = new Set(current);
       updated[aiIndex].add(n);
@@ -346,14 +369,16 @@ export default function BingoPachinkoGame() {
     });
     
     // Award 10 points for AI matching a number
-    if (wasNew) {
-      setPlayers((prev) => 
-        prev.map((p, idx) => 
-          idx === aiIndex + 1 ? { ...p, score: p.score + 10 } : p
-        )
+    setPlayers((prev) => {
+      const updated = prev.map((p, idx) => 
+        idx === aiIndex + 1 ? { ...p, score: p.score + 10 } : p
       );
-    }
-  };
+      // Update ref immediately
+      playersRef.current = updated;
+      return updated;
+    });
+  }, []);
+
 
   const resetBoard = () => {
     const newPegs = generatePegs(30);
@@ -470,6 +495,13 @@ export default function BingoPachinkoGame() {
 
           setPegs(next);
           hitPegIdsRef.current = new Set();
+          
+          // After ball drop completes, ensure scores are updated
+          // Force a state update to ensure React re-renders with latest scores
+          setPlayers((prev) => {
+            // Create a new array to force re-render
+            return prev.map(p => ({ ...p }));
+          });
         }
         animationFrameRef.current = requestAnimationFrame(step);
         return;
@@ -532,13 +564,22 @@ export default function BingoPachinkoGame() {
 
       // Update pegs if collisions detected and mark numbers immediately
       if (pegUpdates.length > 0) {
+        const revealedNumbers = pegUpdates.map(u => u.num);
+        
         // Mark numbers on bingo card immediately when pegs are hit
         pegUpdates.forEach((update) => {
           markNumber(update.num);
-          // Mark for AI players (with some probability to make it interesting)
+        });
+        
+        // Simulate AI opponents - they mark numbers that were revealed
+        revealedNumbers.forEach((num) => {
           AI_NAMES.forEach((_, aiIndex) => {
-            if (Math.random() < 0.7) { // 70% chance AI gets the number
-              markNumberForAI(update.num, aiIndex);
+            const currentAiCards = aiCardsRef.current;
+            const aiCard = currentAiCards[aiIndex];
+            const aiPool = cardNumberPool(aiCard);
+            // AI has a chance to mark the number if it's on their card
+            if (aiPool.includes(num) && Math.random() < 0.75) {
+              markNumberForAI(num, aiIndex);
             }
           });
         });
@@ -611,6 +652,8 @@ export default function BingoPachinkoGame() {
       if (y > 1.06) {
         ballRef.current = { ...b, x, y: 1.06, vx: 0, vy: 0, dropping: false };
         setBall(ballRef.current);
+        // Ensure scores are updated after ball drains
+        setPlayers((prev) => [...prev]);
         animationFrameRef.current = requestAnimationFrame(step);
         return;
       }
@@ -872,7 +915,7 @@ export default function BingoPachinkoGame() {
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex items-center justify-between">
         <div className="text-lg font-semibold tracking-tight">
-          Bingo Pachinko <span className="text-xs opacity-60 font-normal">v0.0.1</span>
+          Bingo Pachinko <span className="text-xs opacity-60 font-normal">v0.1.0</span>
         </div>
         <div className="flex items-center gap-2">
           <button
